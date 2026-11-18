@@ -5,7 +5,7 @@
 */
 
 //imports
-use std::io::{self};
+use std::io::{self, Write};
 use std::sync::mpsc::{TryRecvError, channel};
 use std::thread;
 use std::time::Duration;
@@ -17,6 +17,7 @@ fn main() -> io::Result<()> {
 
     //this allows sharing text between threads
     let (sender, receiver) = channel();
+    let mut stdout = io::stdout().lock();
 
     thread::spawn(move || {
         //the background thread that reads io and sends it to the main thread(s)
@@ -43,7 +44,25 @@ fn main() -> io::Result<()> {
 
         //if valid command, goes into main command match loop
         match cmd {
-            Some(text) => {println!("{text}")}
+            Some(text) => {
+                let mut args = text.split_whitespace();
+                match args.next() {
+                    Some("go") => {}
+                    Some("ponderhit") => {}
+                    Some("stop") => {}
+                    Some("setoption") => {}
+                    Some("ucinewgame") => {}
+                    Some("position") => {}
+                    Some("isready") => {writeln!(stdout, "readyok")?;}
+                    Some("uci") => {
+                        writeln!(stdout, "id name xenobot v1.0")?;
+                        writeln!(stdout, "id author xeno (Xavier T.)")?;
+                        writeln!(stdout, "uciok")?;
+                        stdout.flush()?;
+                    }
+                    _ => {}
+                }
+            }
             None => {}
         }
         thread::sleep(Duration::from_millis(100));
