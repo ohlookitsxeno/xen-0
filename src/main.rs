@@ -1,5 +1,6 @@
 /*
     main.rs
+    author: xeno (Xavier T.)
 
     This file handles the main uci interface between clients and the engine.
 */
@@ -9,6 +10,12 @@ use std::io::{self, Write};
 use std::sync::mpsc::{TryRecvError, channel};
 use std::thread;
 use std::time::Duration;
+
+//internal imports
+mod board;
+
+//the main starting FEN
+const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 
 fn main() -> io::Result<()> {
@@ -29,6 +36,10 @@ fn main() -> io::Result<()> {
         }
     });
 
+    let mut mainboard = board::fen_to_board(STARTPOS).unwrap();
+    let searching = false;
+    let ponder = false;
+
     loop {
 
         //This recieves the text from the background thread, and parses it into cmd if it exists. 
@@ -47,15 +58,61 @@ fn main() -> io::Result<()> {
             Some(text) => {
                 let mut args = text.split_whitespace();
                 match args.next() {
+                    //the Main UCI commands and their actions go here!
                     Some("go") => {}
                     Some("ponderhit") => {}
                     Some("stop") => {}
                     Some("setoption") => {}
-                    Some("ucinewgame") => {}
-                    Some("position") => {}
-                    Some("isready") => {writeln!(stdout, "readyok")?;}
+                    Some("ucinewgame") => {
+                        mainboard = board::fen_to_board(STARTPOS).unwrap();
+                    }
+                    Some("position") => {
+                        let newboard = match args.next() {
+                            Some("startpos") => {
+                                Some(board::fen_to_board(STARTPOS))
+                            },
+                            Some("fen") => {
+                                let fenargs: Vec<&str> = args.by_ref().take(6).collect();
+                                let parsedfen = fenargs.join(" ");
+                                Some(board::fen_to_board(&parsedfen))
+                            },
+                            _ => {None}
+                        };
+                        match newboard {
+                            Some(Ok(mut board)) => {
+                                match args.next() {
+                                    Some("moves") => {
+                                        let mut ok = true;
+                                        for movetxt in args {
+                                            match board::uci_move(movetxt).and_then(|mv| board::apply_move(&mut board, mv))
+                                            {
+                                                Ok(()) => {}
+                                                Err(msg) => {
+                                                    eprintln!("invalid move {movetxt}! {msg}");
+                                                    ok = false;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if ok {
+                                            mainboard = board;
+                                        }
+                                    }
+                                    None => {
+                                        mainboard = board;
+                                    }
+                                    Some(_) => {
+                                        eprintln!("invalid argument after position")
+                                    }
+                                }
+                            },
+                            Some(Err(msg)) => {eprintln!("invalid position: {msg}")}
+                            None => {}
+                        }
+                    }
+                    Some("isready") => {writeln!(stdout, "readyok")?;stdout.flush()?;}
                     Some("uci") => {
-                        writeln!(stdout, "id name xenobot v1.0")?;
+                        writeln!(stdout, "id name xen-0 v1.0")?;
                         writeln!(stdout, "id author xeno (Xavier T.)")?;
                         writeln!(stdout, "uciok")?;
                         stdout.flush()?;
