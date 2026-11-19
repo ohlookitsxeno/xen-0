@@ -5,7 +5,7 @@
     This file handles the generation of legal moves
 */
 
-use crate::{attacks::{BETWEEN, BISHOP_ATK, KING_ATKS, KNIGHT_ATKS, PAWN_ATKS, QUEEN_ATK, ROOK_ATK, attacked_by, attackers}, board::{BISHOP, BLACK, Bitboard, Board, KING, KNIGHT, Move, QUEEN, ROOK, WHITE, PAWN, board_cell_mask, color_board}};
+use crate::{attacks::{BETWEEN, BISHOP_ATK, KING_ATKS, KNIGHT_ATKS, PAWN_ATKS, QUEEN_ATK, ROOK_ATK, attacked_by, attackers}, board::{BISHOP, BLACK, Bitboard, Board, KING, KNIGHT, Move, PAWN, QUEEN, ROOK, WHITE, apply_move, board_cell_mask, color_board}};
 
 
 // tied to a board, this describes everything necessary to directly calculate valid moves
@@ -137,6 +137,25 @@ fn legal_moves(board: &Board) -> Vec<Move> {
     while pawns != 0 { //pawns have to be handled differently
         let pawn = pawns.trailing_zeros();
         let mut moves = PAWN_ATKS[board.next][pawn as usize] & ctx.enemy;
+
+        if let Some(to) = board.enp {
+            if board_cell_mask(to) & PAWN_ATKS[board.next][pawn as usize] != 0 {
+                let testmove = Move { from: pawn, to, promotion: None};
+                let mut newboard = board.clone();
+                match apply_move(&mut newboard,testmove) {
+                    Ok(_) =>{
+                        let atk = attackers(&newboard, newboard.next, color_board(&newboard, newboard.next)|color_board(&newboard, 1-newboard.next), ctx.kingcell);
+
+                        if atk == 0 {
+                            out.push(testmove);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+
         if board.next == WHITE {
             if ctx.all & board_cell_mask(pawn) >> 8 == 0 {
                 moves |= board_cell_mask(pawn) >> 8;
