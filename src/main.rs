@@ -13,6 +13,8 @@ use std::time::Duration;
 
 //internal imports
 mod board;
+mod moves;
+mod attacks;
 
 //the main starting FEN
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";

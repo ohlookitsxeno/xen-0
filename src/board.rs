@@ -39,7 +39,7 @@ pub(crate) const WHITE: usize = 0;
 pub(crate) const BLACK: usize = 1;
 
 //cell/board functions
-pub(crate) fn board_cell_mask(cell: u32) -> Bitboard {
+pub(crate) const fn board_cell_mask(cell: u32) -> Bitboard {
     1u64 << cell
 }
 pub(crate) fn board_add(bitboard: &mut Bitboard, cell: u32) {
