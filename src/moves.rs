@@ -5,7 +5,7 @@
     This file handles the generation of legal moves
 */
 
-use crate::{attacks::{BETWEEN, BISHOP_ATK, ROOK_ATK, attacked_by, attackers}, board::{BISHOP, Bitboard, Board, KING, Move, QUEEN, ROOK, board_cell_mask, color_board}};
+use crate::{attacks::{BETWEEN, BISHOP_ATK, KING_ATKS, KNIGHT_ATKS, PAWN_ATKS, QUEEN_ATK, ROOK_ATK, attacked_by, attackers}, board::{BISHOP, BLACK, Bitboard, Board, KING, KNIGHT, Move, QUEEN, ROOK, WHITE, PAWN, board_cell_mask, color_board}};
 
 
 // tied to a board, this describes everything necessary to directly calculate valid moves
@@ -69,5 +69,106 @@ fn get_legal_context(board: &Board) -> legalcontext {
 }
 
 fn legal_moves(board: &Board) -> Vec<Move> {
-    let legalctx = get_legal_context(board);
+    let ctx = get_legal_context(board);
+    let mut out = Vec::new();
+
+    // The below section handles king moves
+    let mut kingmoves = KING_ATKS[ctx.kingcell as usize] & !ctx.attacked & !ctx.me; 
+
+    while kingmoves != 0 { //same method used in attacks/attacked_by, look there for info
+        let cell = kingmoves.trailing_zeros() as usize;
+        out.push(Move {from: ctx.kingcell, to: cell as u32, promotion: None});
+        kingmoves &= kingmoves - 1;
+    }
+
+    if ctx.check_mask == 0 {return out;} //early return when double checked (or further cooked)
+
+    let mut knights = board.boards[board.next][KNIGHT];
+    let mut queens = board.boards[board.next][QUEEN];
+    let mut bishops = board.boards[board.next][BISHOP];
+    let mut rooks = board.boards[board.next][ROOK];
+    let mut pawns = board.boards[board.next][PAWN];
+
+    while knights != 0 {
+        let knight = knights.trailing_zeros() as usize;
+        let mut moves = KNIGHT_ATKS[knight] & !ctx.me &  & ctx.pin_masks[knight] & ctx.check_mask;
+
+        while moves != 0 {
+            let cell = moves.trailing_zeros();
+            out.push(Move {from: knight as u32, to: cell, promotion: None });
+            moves &= moves - 1;
+        }
+        knights &= knights - 1;
+    }
+    while queens != 0 {
+        let queen = queens.trailing_zeros();
+        let mut moves = QUEEN_ATK(queen, ctx.all) & !ctx.me &  & ctx.pin_masks[queen as usize] & ctx.check_mask;
+
+        while moves != 0 {
+            let cell = moves.trailing_zeros();
+            out.push(Move {from: queen as u32, to: cell, promotion: None });
+            moves &= moves - 1;
+        }
+        queens &= queens - 1;
+    }
+    while bishops != 0 {
+        let bishop = bishops.trailing_zeros();
+        let mut moves = BISHOP_ATK(bishop, ctx.all) & !ctx.me &  & ctx.pin_masks[bishop as usize] & ctx.check_mask;
+
+        while moves != 0 {
+            let cell = moves.trailing_zeros();
+            out.push(Move {from: bishop as u32, to: cell, promotion: None });
+            moves &= moves - 1;
+        }
+        bishops &= bishops - 1;
+    }
+    while rooks != 0 {
+        let rook = rooks.trailing_zeros();
+        let mut moves = ROOK_ATK(rook, ctx.all) & !ctx.me &  & ctx.pin_masks[rook as usize] & ctx.check_mask;
+
+        while moves != 0 {
+            let cell = moves.trailing_zeros();
+            out.push(Move {from: rook as u32, to: cell, promotion: None });
+            moves &= moves - 1;
+        }
+        rooks &= rooks - 1;
+    }
+
+    while pawns != 0 { //pawns have to be handled differently
+        let pawn = pawns.trailing_zeros();
+        let mut moves = PAWN_ATKS[board.next][pawn as usize] & ctx.enemy;
+        if board.next == WHITE {
+            if ctx.all & board_cell_mask(pawn) >> 8 == 0 {
+                moves |= board_cell_mask(pawn) >> 8;
+                if ctx.all & board_cell_mask(pawn) >> 16 == 0 && (pawn/8 == 6) {
+                    moves |= board_cell_mask(pawn) >> 16;
+                } 
+            }
+        }
+        if board.next == BLACK {
+            if ctx.all & board_cell_mask(pawn) << 8 == 0 {
+                moves |= board_cell_mask(pawn) << 8;
+                if ctx.all & board_cell_mask(pawn) << 16 == 0 && (pawn/8 == 1) {
+                    moves |= board_cell_mask(pawn) << 16;
+                } 
+            }
+        }
+        moves = moves & !ctx.me &  & ctx.pin_masks[pawn as usize] & ctx.check_mask;
+        while moves != 0 {
+            let cell = moves.trailing_zeros();
+            if (board.next == WHITE && cell/8 == 0) || (board.next == BLACK && cell/8 == 7) {
+                out.push(Move {from: pawn as u32, to: cell, promotion: Some(QUEEN) });
+                out.push(Move {from: pawn as u32, to: cell, promotion: Some(ROOK) });
+                out.push(Move {from: pawn as u32, to: cell, promotion: Some(BISHOP) });
+                out.push(Move {from: pawn as u32, to: cell, promotion: Some(KNIGHT) });
+            } else {
+                out.push(Move {from: pawn as u32, to: cell, promotion: None });
+            }
+            
+            moves &= moves - 1;
+        }
+        pawns &= pawns - 1;
+    }
+     
+    out
 }
