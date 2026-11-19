@@ -68,7 +68,7 @@ fn get_legal_context(board: &Board) -> legalcontext {
         pin_masks: ctxpinmasks, me: ctxme, enemy: ctxenemy, all: ctxall, attacked: ctxattacked }
 }
 
-fn legal_moves(board: &Board) -> Vec<Move> {
+pub(crate) fn legal_moves(board: &Board) -> Vec<Move> {
     let ctx = get_legal_context(board);
     let mut out = Vec::new();
 
@@ -79,6 +79,41 @@ fn legal_moves(board: &Board) -> Vec<Move> {
         let cell = kingmoves.trailing_zeros() as usize;
         out.push(Move {from: ctx.kingcell, to: cell as u32, promotion: None});
         kingmoves &= kingmoves - 1;
+    }
+
+    if ctx.checkers == 0 {
+        if ctx.kingcell == 60 && board.next == WHITE {
+            if board.castle_wk && (board.boards[WHITE][ROOK] & board_cell_mask(63) != 0) {
+                if BETWEEN[60][63] & ctx.all == 0 {
+                    if (board_cell_mask(61) | board_cell_mask(62)) & ctx.attacked == 0 {
+                        out.push(Move {from: 60, to: 62, promotion: None});
+                    }
+                }
+            }
+            if board.castle_wq && (board.boards[WHITE][ROOK] & board_cell_mask(56) != 0) {
+                if BETWEEN[60][56] & ctx.all == 0 {
+                    if (board_cell_mask(58) | board_cell_mask(59)) & ctx.attacked == 0 {
+                        out.push(Move {from: 60, to: 58, promotion: None});
+                    }
+                }
+            }
+        }
+        if ctx.kingcell == 4 && board.next == BLACK {
+            if board.castle_bk && (board.boards[BLACK][ROOK] & board_cell_mask(7) != 0) {
+                if BETWEEN[4][7] & ctx.all == 0 {
+                    if (board_cell_mask(5) | board_cell_mask(6)) & ctx.attacked == 0 {
+                        out.push(Move {from: 4, to: 6, promotion: None});
+                    }
+                }
+            }
+            if board.castle_bq && (board.boards[BLACK][ROOK] & board_cell_mask(0) != 0) {
+                if BETWEEN[4][0] & ctx.all == 0 {
+                    if (board_cell_mask(3) | board_cell_mask(2)) & ctx.attacked == 0 {
+                        out.push(Move {from: 4, to: 2, promotion: None});
+                    }
+                }
+            }
+        }
     }
 
     if ctx.check_mask == 0 {return out;} //early return when double checked (or further cooked)
