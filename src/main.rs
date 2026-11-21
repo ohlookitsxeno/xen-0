@@ -11,11 +11,17 @@ use std::sync::mpsc::{TryRecvError, channel};
 use std::thread;
 use std::time::Duration;
 
+use crate::board::move_uci;
+use crate::search::SearchCommand::{Go, Ponderhit, Stop};
+use crate::search::SearchLimits;
+use crate::{search::{SearchCommand}};
+
 //internal imports
 mod board;
 mod moves;
 mod attacks;
 mod evaluation;
+mod search;
 
 //the main starting FEN
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -28,6 +34,10 @@ fn main() -> io::Result<()> {
     //this allows sharing text between threads
     let (sender, receiver) = channel();
     let mut stdout = io::stdout().lock();
+
+    let (searchtx, searchrx) = channel::<SearchCommand>();
+    let (resulttx, resultrx) = channel::<Option<board::Move>>();
+    let worker = std::thread::spawn(move || search::passive(searchrx, resulttx));
 
     thread::spawn(move || {
         //the background thread that reads io and sends it to the main thread(s)
@@ -56,15 +66,46 @@ fn main() -> io::Result<()> {
             Err(TryRecvError::Disconnected) => {break;}
         };
 
+         match resultrx.try_recv() {
+            Ok(Some(mv)) => {
+                writeln!(stdout, "bestmove {}", move_uci(mv))?;
+            }
+            Ok(None) => {
+                writeln!(stdout, "bestmove 0000")?;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {break;}
+        }
+
         //if valid command, goes into main command match loop
         match cmd {
             Some(text) => {
                 let mut args = text.split_whitespace();
                 match args.next() {
                     //the Main UCI commands and their actions go here!
-                    Some("go") => {}
-                    Some("ponderhit") => {}
-                    Some("stop") => {}
+                    Some("go") => {
+                        //send signal to search thread
+                        match args.next() {
+                            Some("depth") => {
+                                //parse depth into number
+                                let depth = args.next().unwrap_or("2");
+                                let dn = depth.parse::<u32>().ok();
+                                let _ = searchtx.send(Go(mainboard, SearchLimits { movetime:None, timeremaining: None, depth: dn }));
+                            }
+                            _ => {
+                                let _ = searchtx.send(Go(mainboard, SearchLimits { movetime:None, timeremaining: None, depth: Some(2) }));
+                            }
+                        };
+                        
+                    }
+                    Some("ponderhit") => {
+                        //send signal to search thread
+                        let _ = searchtx.send(Ponderhit());
+                    }
+                    Some("stop") => {
+                        //send signal to search thread to stop
+                        let _ = searchtx.send(Stop());
+                    }
                     Some("setoption") => {}
                     Some("ucinewgame") => {
                         mainboard = board::fen_to_board(STARTPOS).unwrap();

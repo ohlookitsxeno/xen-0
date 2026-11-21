@@ -126,7 +126,7 @@ pub(crate) fn legal_moves(board: &Board) -> Vec<Move> {
 
     while knights != 0 {
         let knight = knights.trailing_zeros() as usize;
-        let mut moves = KNIGHT_ATKS[knight] & !ctx.me &  & ctx.pin_masks[knight] & ctx.check_mask;
+        let mut moves = KNIGHT_ATKS[knight] & !ctx.me & ctx.pin_masks[knight] & ctx.check_mask;
 
         while moves != 0 {
             let cell = moves.trailing_zeros();
@@ -137,7 +137,7 @@ pub(crate) fn legal_moves(board: &Board) -> Vec<Move> {
     }
     while queens != 0 {
         let queen = queens.trailing_zeros();
-        let mut moves = QUEEN_ATK(queen, ctx.all) & !ctx.me &  & ctx.pin_masks[queen as usize] & ctx.check_mask;
+        let mut moves = QUEEN_ATK(queen, ctx.all) & !ctx.me & ctx.pin_masks[queen as usize] & ctx.check_mask;
 
         while moves != 0 {
             let cell = moves.trailing_zeros();
@@ -148,7 +148,7 @@ pub(crate) fn legal_moves(board: &Board) -> Vec<Move> {
     }
     while bishops != 0 {
         let bishop = bishops.trailing_zeros();
-        let mut moves = BISHOP_ATK(bishop, ctx.all) & !ctx.me &  & ctx.pin_masks[bishop as usize] & ctx.check_mask;
+        let mut moves = BISHOP_ATK(bishop, ctx.all) & !ctx.me & ctx.pin_masks[bishop as usize] & ctx.check_mask;
 
         while moves != 0 {
             let cell = moves.trailing_zeros();
@@ -159,7 +159,7 @@ pub(crate) fn legal_moves(board: &Board) -> Vec<Move> {
     }
     while rooks != 0 {
         let rook = rooks.trailing_zeros();
-        let mut moves = ROOK_ATK(rook, ctx.all) & !ctx.me &  & ctx.pin_masks[rook as usize] & ctx.check_mask;
+        let mut moves = ROOK_ATK(rook, ctx.all) & !ctx.me & ctx.pin_masks[rook as usize] & ctx.check_mask;
 
         while moves != 0 {
             let cell = moves.trailing_zeros();

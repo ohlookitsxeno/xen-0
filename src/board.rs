@@ -321,3 +321,23 @@ pub(crate) fn uci_move(movetxt: &str) -> Result<Move, String> {
         promotion,
     })
 }
+
+pub(crate) fn move_uci(mv: Move) -> String {
+    let mut out = String::with_capacity(5);
+
+    out.push(char::from(b'a' + (mv.from % 8) as u8));
+    out.push(char::from(b'8' - (mv.from /8) as u8));
+    out.push(char::from(b'a' + (mv.to % 8) as u8));
+    out.push(char::from(b'8' - (mv.to /8) as u8));
+    
+    match mv.promotion {
+        None => {},
+        Some(ROOK) => {out.push('r');},
+        Some(QUEEN) => {out.push('q');},
+        Some(KNIGHT) => {out.push('n');},
+        Some(BISHOP) => {out.push('b');},
+        Some(_) => {}
+    };
+
+    out
+}
