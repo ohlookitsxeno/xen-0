@@ -5,14 +5,21 @@
     This file handles the management and logic of searching
 */
 
-use std::sync::mpsc::{Receiver, Sender, TryRecvError};
+use std::{sync::{Arc, atomic::{Ordering, AtomicBool}, mpsc::{Receiver, Sender, TryRecvError}}};
 
 use crate::{board::{self, BLACK, Board, Move, WHITE, apply_move}, evaluation::evaluate, moves::legal_moves};
 
+#[derive(Default)]
 pub(crate) struct SearchLimits {
+    pub(crate) wtime: Option<i64>,
+    pub(crate) btime: Option<i64>,
+    pub(crate) winc: Option<u32>,
+    pub(crate) binc: Option<u32>,
+    pub(crate) movestogo: Option<u32>,
     pub(crate) movetime: Option<u32>,
-    pub(crate) timeremaining: Option<u32>,
-    pub(crate) depth: Option<u32>
+    pub(crate) depth: Option<u32>,
+    pub(crate) maxnodes: Option<u64>,
+    pub(crate) infinite: bool
 }
 
 pub(crate) enum SearchCommand {
@@ -21,14 +28,14 @@ pub(crate) enum SearchCommand {
     Stop()
 }
 
-pub(crate) fn passive(rx: Receiver<SearchCommand>, tx: Sender<Option<Move>>) {
+pub(crate) fn passive(rx: Receiver<SearchCommand>, tx: Sender<Option<Move>>, stopflag: Arc<AtomicBool>) {
     loop {
         match rx.recv(){
         Ok(msg) => {
             match msg {
                 //recieved board from main with limits
                 SearchCommand::Go(b, lim) => {
-                    let bestmove = search(b, lim.depth.unwrap_or(2) as usize);
+                    let bestmove = search(b, lim.depth.unwrap_or(2) as usize, &stopflag);
                     // send bestmove back?
                     let _ = tx.send(bestmove);
                 },
@@ -42,7 +49,7 @@ pub(crate) fn passive(rx: Receiver<SearchCommand>, tx: Sender<Option<Move>>) {
 }
 
 // for now just chooses a random move when it can
-pub(crate) fn search(board: Board, depth: usize) -> Option<Move> {
+pub(crate) fn search(board: Board, depth: usize, stopflag: &AtomicBool) -> Option<Move> {
     let moves = legal_moves(&board);
 
     if moves.is_empty(){
@@ -51,19 +58,27 @@ pub(crate) fn search(board: Board, depth: usize) -> Option<Move> {
 
     let mut out = moves[0];
 
-    
+    let mut nodes: u64 = 0;
 
     //iterative deepening to target depth
     for d in 1..=depth {
+        let mut iterbest = out;
+        if stopflag.load(Ordering::Relaxed) {break;}
         let mut bestscore = if board.next == WHITE {-1000000} else {1000000};
         for &m in &moves {
             let mut clone = board.clone();
             let _ = apply_move(&mut clone, m);
 
-            let score = recsearch(clone, d-1);
-
-            if board.next == WHITE && score > bestscore {bestscore = score; out = m;}
-            if board.next == BLACK && score < bestscore {bestscore = score; out = m;}
+            match recsearch(clone, d-1, stopflag, &mut nodes) {
+                Some(s) => {
+                    if board.next == WHITE && s > bestscore {bestscore = s; iterbest = m;}
+                    if board.next == BLACK && s < bestscore {bestscore = s; iterbest = m;}
+                },
+                None => {return Some(out);}
+            };            
+        }
+        if !stopflag.load(Ordering::Relaxed) {
+            out = iterbest;
         }
     }
 
@@ -73,11 +88,17 @@ pub(crate) fn search(board: Board, depth: usize) -> Option<Move> {
 
 
 // simple minimax implementation
-fn recsearch(board: Board, depth: usize) -> i32 {
+fn recsearch(board: Board, depth: usize, stopflag: &AtomicBool, nodes: &mut u64) -> Option<i32> {
+
+    *nodes += 1;
+    if *nodes & 1023 == 0 { //every 1024 nodes
+        if stopflag.load(Ordering::Relaxed) {return None;}
+    }
+
     let moves = legal_moves(&board);
 
     if moves.is_empty() || depth == 0 {
-        return evaluate(&board, &moves);
+        return Some(evaluate(&board, &moves));
     }
 
     let mut out = if board.next == WHITE {-1000000} else {1000000};
@@ -86,12 +107,12 @@ fn recsearch(board: Board, depth: usize) -> i32 {
         let mut clone = board.clone();
         let _ = apply_move(&mut clone, m);
 
-        let eval = recsearch(clone, depth - 1);
+        let eval = recsearch(clone, depth - 1, stopflag, nodes)?;
 
         if board.next == WHITE && eval > out {out = eval;}
         if board.next == BLACK && eval < out {out = eval;}
     }
-    out
+    Some(out)
 }
 
 /* 

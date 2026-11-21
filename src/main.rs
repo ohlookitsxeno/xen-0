@@ -7,6 +7,8 @@
 
 //imports
 use std::io::{self, Write};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{TryRecvError, channel};
 use std::thread;
 use std::time::Duration;
@@ -35,10 +37,16 @@ fn main() -> io::Result<()> {
     let (sender, receiver) = channel();
     let mut stdout = io::stdout().lock();
 
+    //this allows communication between this and search thread
     let (searchtx, searchrx) = channel::<SearchCommand>();
     let (resulttx, resultrx) = channel::<Option<board::Move>>();
-    let worker = std::thread::spawn(move || search::passive(searchrx, resulttx));
+    
 
+    let stopflag = Arc::new(AtomicBool::new(false));
+    let workerstop = Arc::clone(&stopflag);
+
+    let worker = std::thread::spawn(move || search::passive(searchrx, resulttx,workerstop));
+    
     thread::spawn(move || {
         //the background thread that reads io and sends it to the main thread(s)
         for line in io::stdin().lines() {
@@ -59,7 +67,7 @@ fn main() -> io::Result<()> {
         let cmd = match receiver.try_recv() {
             Ok(txt) => {
                 let trimmed = txt.trim();
-                if trimmed == "quit" {break;}
+                if trimmed == "quit" {stopflag.store(true, Ordering::Relaxed); break;}
                 Some(trimmed.to_string())
             }
             Err(TryRecvError::Empty) => {None}
@@ -69,9 +77,11 @@ fn main() -> io::Result<()> {
          match resultrx.try_recv() {
             Ok(Some(mv)) => {
                 writeln!(stdout, "bestmove {}", move_uci(mv))?;
+                stdout.flush()?;
             }
             Ok(None) => {
                 writeln!(stdout, "bestmove 0000")?;
+                stdout.flush()?;
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {break;}
@@ -85,17 +95,41 @@ fn main() -> io::Result<()> {
                     //the Main UCI commands and their actions go here!
                     Some("go") => {
                         //send signal to search thread
-                        match args.next() {
-                            Some("depth") => {
-                                //parse depth into number
-                                let depth = args.next().unwrap_or("2");
-                                let dn = depth.parse::<u32>().ok();
-                                let _ = searchtx.send(Go(mainboard, SearchLimits { movetime:None, timeremaining: None, depth: dn }));
+                        stopflag.store(false, Ordering::Relaxed);
+                        let mut limits = SearchLimits::default();
+                        while let Some(arg) = args.next() {
+                            match arg {
+                                "depth" => {
+                                    limits.depth = args.next().unwrap_or("6").parse::<u32>().ok();
+                                },
+                                "wtime" => {
+                                    limits.wtime = args.next().unwrap_or("1000").parse::<i64>().ok();
+                                },
+                                "btime" => {
+                                    limits.btime = args.next().unwrap_or("1000").parse::<i64>().ok();
+                                },
+                                "winc" => {
+                                    limits.winc = args.next().unwrap_or("1000").parse::<u32>().ok();
+                                },
+                                "binc" => {
+                                    limits.binc = args.next().unwrap_or("1000").parse::<u32>().ok();
+                                },
+                                "movestogo" => {
+                                    limits.movestogo = args.next().unwrap_or("100").parse::<u32>().ok();
+                                },
+                                "movetime" => {
+                                    limits.movetime = args.next().unwrap_or("1000").parse::<u32>().ok();
+                                },
+                                "maxnodes" => {
+                                    limits.maxnodes = args.next().unwrap_or("1000000").parse::<u64>().ok();
+                                },
+                                "infinite" => {
+                                    limits.infinite = true;
+                                },
+                                _ => {}
                             }
-                            _ => {
-                                let _ = searchtx.send(Go(mainboard, SearchLimits { movetime:None, timeremaining: None, depth: Some(2) }));
-                            }
-                        };
+                        }
+                        let _ = searchtx.send(Go(mainboard, limits));
                         
                     }
                     Some("ponderhit") => {
@@ -104,6 +138,7 @@ fn main() -> io::Result<()> {
                     }
                     Some("stop") => {
                         //send signal to search thread to stop
+                        stopflag.store(true, Ordering::Relaxed);
                         let _ = searchtx.send(Stop());
                     }
                     Some("setoption") => {}
@@ -166,7 +201,7 @@ fn main() -> io::Result<()> {
             }
             None => {}
         }
-        thread::sleep(Duration::from_millis(100));
+        //thread::sleep(Duration::from_millis(100));
     }
     Ok(())
 }
